@@ -1,15 +1,8 @@
 'use strict';
 
+var call = Function.prototype.call;
+var $hasOwn = Object.prototype.hasOwnProperty;
+var bind = require('function-bind');
+
 /** @type {import('.')} */
-var $gOPD = require('./gOPD');
-
-if ($gOPD) {
-	try {
-		$gOPD([], 'length');
-	} catch (e) {
-		// IE 8 has a broken gOPD
-		$gOPD = null;
-	}
-}
-
-module.exports = $gOPD;
+module.exports = bind.call(call, $hasOwn);
