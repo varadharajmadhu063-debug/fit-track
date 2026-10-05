@@ -1,308 +1,277 @@
-# Chokidar [![Weekly downloads](https://img.shields.io/npm/dw/chokidar.svg)](https://github.com/paulmillr/chokidar) [![Yearly downloads](https://img.shields.io/npm/dy/chokidar.svg)](https://github.com/paulmillr/chokidar)
+# cors
 
-> Minimal and efficient cross-platform file watching library
+[![NPM Version][npm-image]][npm-url]
+[![NPM Downloads][downloads-image]][downloads-url]
+[![Build Status][github-actions-ci-image]][github-actions-ci-url]
+[![Test Coverage][coveralls-image]][coveralls-url]
 
-[![NPM](https://nodei.co/npm/chokidar.png)](https://www.npmjs.com/package/chokidar)
+CORS is a [Node.js](https://nodejs.org/en/) middleware for [Express](https://expressjs.com/)/[Connect](https://github.com/senchalabs/connect) that sets [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS) response headers. These headers tell browsers which origins can read responses from your server.
 
-## Why?
+> [!IMPORTANT]
+> **How CORS Works:** This package sets response headers—it doesn't block requests. CORS is enforced by browsers: they check the headers and decide if JavaScript can read the response. Non-browser clients (curl, Postman, other servers) ignore CORS entirely. See the [MDN CORS guide](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS) for details.
 
-Node.js `fs.watch`:
+* [Installation](#installation)
+* [Usage](#usage)
+  * [Simple Usage](#simple-usage-enable-all-cors-requests)
+  * [Enable CORS for a Single Route](#enable-cors-for-a-single-route)
+  * [Configuring CORS](#configuring-cors)
+  * [Configuring CORS w/ Dynamic Origin](#configuring-cors-w-dynamic-origin)
+  * [Enabling CORS Pre-Flight](#enabling-cors-pre-flight)
+  * [Customizing CORS Settings Dynamically per Request](#customizing-cors-settings-dynamically-per-request)
+* [Configuration Options](#configuration-options)
+* [Common Misconceptions](#common-misconceptions)
+* [License](#license)
+* [Original Author](#original-author)
 
-* Doesn't report filenames on MacOS.
-* Doesn't report events at all when using editors like Sublime on MacOS.
-* Often reports events twice.
-* Emits most changes as `rename`.
-* Does not provide an easy way to recursively watch file trees.
-* Does not support recursive watching on Linux.
+## Installation
 
-Node.js `fs.watchFile`:
-
-* Almost as bad at event handling.
-* Also does not provide any recursive watching.
-* Results in high CPU utilization.
-
-Chokidar resolves these problems.
-
-Initially made for **[Brunch](https://brunch.io/)** (an ultra-swift web app build tool), it is now used in
-[Microsoft's Visual Studio Code](https://github.com/microsoft/vscode),
-[gulp](https://github.com/gulpjs/gulp/),
-[karma](https://karma-runner.github.io/),
-[PM2](https://github.com/Unitech/PM2),
-[browserify](http://browserify.org/),
-[webpack](https://webpack.github.io/),
-[BrowserSync](https://www.browsersync.io/),
-and [many others](https://www.npmjs.com/browse/depended/chokidar).
-It has proven itself in production environments.
-
-Version 3 is out! Check out our blog post about it: [Chokidar 3: How to save 32TB of traffic every week](https://paulmillr.com/posts/chokidar-3-save-32tb-of-traffic/)
-
-## How?
-
-Chokidar does still rely on the Node.js core `fs` module, but when using
-`fs.watch` and `fs.watchFile` for watching, it normalizes the events it
-receives, often checking for truth by getting file stats and/or dir contents.
-
-On MacOS, chokidar by default uses a native extension exposing the Darwin
-`FSEvents` API. This provides very efficient recursive watching compared with
-implementations like `kqueue` available on most \*nix platforms. Chokidar still
-does have to do some work to normalize the events received that way as well.
-
-On most other platforms, the `fs.watch`-based implementation is the default, which
-avoids polling and keeps CPU usage down. Be advised that chokidar will initiate
-watchers recursively for everything within scope of the paths that have been
-specified, so be judicious about not wasting system resources by watching much
-more than needed.
-
-## Getting started
-
-Install with npm:
+This is a [Node.js](https://nodejs.org/en/) module available through the
+[npm registry](https://www.npmjs.com/). Installation is done using the
+[`npm install` command](https://docs.npmjs.com/downloading-and-installing-packages-locally):
 
 ```sh
-npm install chokidar
+$ npm install cors
 ```
 
-Then `require` and use it in your code:
+## Usage
+
+### Simple Usage (Enable *All* CORS Requests)
 
 ```javascript
-const chokidar = require('chokidar');
+var express = require('express')
+var cors = require('cors')
+var app = express()
 
-// One-liner for current directory
-chokidar.watch('.').on('all', (event, path) => {
-  console.log(event, path);
-});
+// Adds headers: Access-Control-Allow-Origin: *
+app.use(cors())
+
+app.get('/products/:id', function (req, res, next) {
+  res.json({msg: 'Hello'})
+})
+
+app.listen(80, function () {
+  console.log('web server listening on port 80')
+})
 ```
 
-## API
+### Enable CORS for a Single Route
 
 ```javascript
-// Example of a more typical implementation structure
+var express = require('express')
+var cors = require('cors')
+var app = express()
 
-// Initialize watcher.
-const watcher = chokidar.watch('file, dir, glob, or array', {
-  ignored: /(^|[\/\\])\../, // ignore dotfiles
-  persistent: true
-});
+// Adds headers: Access-Control-Allow-Origin: *
+app.get('/products/:id', cors(), function (req, res, next) {
+  res.json({msg: 'Hello'})
+})
 
-// Something to use when events are received.
-const log = console.log.bind(console);
-// Add event listeners.
-watcher
-  .on('add', path => log(`File ${path} has been added`))
-  .on('change', path => log(`File ${path} has been changed`))
-  .on('unlink', path => log(`File ${path} has been removed`));
-
-// More possible events.
-watcher
-  .on('addDir', path => log(`Directory ${path} has been added`))
-  .on('unlinkDir', path => log(`Directory ${path} has been removed`))
-  .on('error', error => log(`Watcher error: ${error}`))
-  .on('ready', () => log('Initial scan complete. Ready for changes'))
-  .on('raw', (event, path, details) => { // internal
-    log('Raw event info:', event, path, details);
-  });
-
-// 'add', 'addDir' and 'change' events also receive stat() results as second
-// argument when available: https://nodejs.org/api/fs.html#fs_class_fs_stats
-watcher.on('change', (path, stats) => {
-  if (stats) console.log(`File ${path} changed size to ${stats.size}`);
-});
-
-// Watch new files.
-watcher.add('new-file');
-watcher.add(['new-file-2', 'new-file-3', '**/other-file*']);
-
-// Get list of actual paths being watched on the filesystem
-var watchedPaths = watcher.getWatched();
-
-// Un-watch some files.
-await watcher.unwatch('new-file*');
-
-// Stop watching.
-// The method is async!
-watcher.close().then(() => console.log('closed'));
-
-// Full list of options. See below for descriptions.
-// Do not use this example!
-chokidar.watch('file', {
-  persistent: true,
-
-  ignored: '*.txt',
-  ignoreInitial: false,
-  followSymlinks: true,
-  cwd: '.',
-  disableGlobbing: false,
-
-  usePolling: false,
-  interval: 100,
-  binaryInterval: 300,
-  alwaysStat: false,
-  depth: 99,
-  awaitWriteFinish: {
-    stabilityThreshold: 2000,
-    pollInterval: 100
-  },
-
-  ignorePermissionErrors: false,
-  atomic: true // or a custom 'atomicity delay', in milliseconds (default 100)
-});
-
+app.listen(80, function () {
+  console.log('web server listening on port 80')
+})
 ```
 
-`chokidar.watch(paths, [options])`
+### Configuring CORS
 
-* `paths` (string or array of strings). Paths to files, dirs to be watched
-recursively, or glob patterns.
-    - Note: globs must not contain windows separators (`\`),
-    because that's how they work by the standard —
-    you'll need to replace them with forward slashes (`/`).
-    - Note 2: for additional glob documentation, check out low-level
-    library: [picomatch](https://github.com/micromatch/picomatch).
-* `options` (object) Options object as defined below:
+See the [configuration options](#configuration-options) for details.
 
-#### Persistence
+```javascript
+var express = require('express')
+var cors = require('cors')
+var app = express()
 
-* `persistent` (default: `true`). Indicates whether the process
-should continue to run as long as files are being watched. If set to
-`false` when using `fsevents` to watch, no more events will be emitted
-after `ready`, even if the process continues to run.
+var corsOptions = {
+  origin: 'http://example.com',
+  optionsSuccessStatus: 200 // some legacy browsers (IE11, various SmartTVs) choke on 204
+}
 
-#### Path filtering
+// Adds headers: Access-Control-Allow-Origin: http://example.com, Vary: Origin
+app.get('/products/:id', cors(corsOptions), function (req, res, next) {
+  res.json({msg: 'Hello'})
+})
 
-* `ignored` ([anymatch](https://github.com/es128/anymatch)-compatible definition)
-Defines files/paths to be ignored. The whole relative or absolute path is
-tested, not just filename. If a function with two arguments is provided, it
-gets called twice per path - once with a single argument (the path), second
-time with two arguments (the path and the
-[`fs.Stats`](https://nodejs.org/api/fs.html#fs_class_fs_stats)
-object of that path).
-* `ignoreInitial` (default: `false`). If set to `false` then `add`/`addDir` events are also emitted for matching paths while
-instantiating the watching as chokidar discovers these file paths (before the `ready` event).
-* `followSymlinks` (default: `true`). When `false`, only the
-symlinks themselves will be watched for changes instead of following
-the link references and bubbling events through the link's path.
-* `cwd` (no default). The base directory from which watch `paths` are to be
-derived. Paths emitted with events will be relative to this.
-* `disableGlobbing` (default: `false`). If set to `true` then the strings passed to `.watch()` and `.add()` are treated as
-literal path names, even if they look like globs.
+app.listen(80, function () {
+  console.log('web server listening on port 80')
+})
+```
 
-#### Performance
+### Configuring CORS w/ Dynamic Origin
 
-* `usePolling` (default: `false`).
-Whether to use fs.watchFile (backed by polling), or fs.watch. If polling
-leads to high CPU utilization, consider setting this to `false`. It is
-typically necessary to **set this to `true` to successfully watch files over
-a network**, and it may be necessary to successfully watch files in other
-non-standard situations. Setting to `true` explicitly on MacOS overrides the
-`useFsEvents` default. You may also set the CHOKIDAR_USEPOLLING env variable
-to true (1) or false (0) in order to override this option.
-* _Polling-specific settings_ (effective when `usePolling: true`)
-  * `interval` (default: `100`). Interval of file system polling, in milliseconds. You may also
-    set the CHOKIDAR_INTERVAL env variable to override this option.
-  * `binaryInterval` (default: `300`). Interval of file system
-  polling for binary files.
-  ([see list of binary extensions](https://github.com/sindresorhus/binary-extensions/blob/master/binary-extensions.json))
-* `useFsEvents` (default: `true` on MacOS). Whether to use the
-`fsevents` watching interface if available. When set to `true` explicitly
-and `fsevents` is available this supercedes the `usePolling` setting. When
-set to `false` on MacOS, `usePolling: true` becomes the default.
-* `alwaysStat` (default: `false`). If relying upon the
-[`fs.Stats`](https://nodejs.org/api/fs.html#fs_class_fs_stats)
-object that may get passed with `add`, `addDir`, and `change` events, set
-this to `true` to ensure it is provided even in cases where it wasn't
-already available from the underlying watch events.
-* `depth` (default: `undefined`). If set, limits how many levels of
-subdirectories will be traversed.
-* `awaitWriteFinish` (default: `false`).
-By default, the `add` event will fire when a file first appears on disk, before
-the entire file has been written. Furthermore, in some cases some `change`
-events will be emitted while the file is being written. In some cases,
-especially when watching for large files there will be a need to wait for the
-write operation to finish before responding to a file creation or modification.
-Setting `awaitWriteFinish` to `true` (or a truthy value) will poll file size,
-holding its `add` and `change` events until the size does not change for a
-configurable amount of time. The appropriate duration setting is heavily
-dependent on the OS and hardware. For accurate detection this parameter should
-be relatively high, making file watching much less responsive.
-Use with caution.
-  * *`options.awaitWriteFinish` can be set to an object in order to adjust
-  timing params:*
-  * `awaitWriteFinish.stabilityThreshold` (default: 2000). Amount of time in
-  milliseconds for a file size to remain constant before emitting its event.
-  * `awaitWriteFinish.pollInterval` (default: 100). File size polling interval, in milliseconds.
+This module supports validating the origin dynamically using a function provided
+to the `origin` option. This function will be passed a string that is the origin
+(or `undefined` if the request has no origin), and a `callback` with the signature
+`callback(error, origin)`.
 
-#### Errors
+The `origin` argument to the callback can be any value allowed for the `origin`
+option of the middleware, except a function. See the
+[configuration options](#configuration-options) section for more information on all
+the possible value types.
 
-* `ignorePermissionErrors` (default: `false`). Indicates whether to watch files
-that don't have read permissions if possible. If watching fails due to `EPERM`
-or `EACCES` with this set to `true`, the errors will be suppressed silently.
-* `atomic` (default: `true` if `useFsEvents` and `usePolling` are `false`).
-Automatically filters out artifacts that occur when using editors that use
-"atomic writes" instead of writing directly to the source file. If a file is
-re-added within 100 ms of being deleted, Chokidar emits a `change` event
-rather than `unlink` then `add`. If the default of 100 ms does not work well
-for you, you can override it by setting `atomic` to a custom value, in
-milliseconds.
+This function is designed to allow the dynamic loading of allowed origin(s) from
+a backing datasource, like a database.
 
-### Methods & Events
+```javascript
+var express = require('express')
+var cors = require('cors')
+var app = express()
 
-`chokidar.watch()` produces an instance of `FSWatcher`. Methods of `FSWatcher`:
+var corsOptions = {
+  origin: function (origin, callback) {
+    // db.loadOrigins is an example call to load
+    // a list of origins from a backing database
+    db.loadOrigins(function (error, origins) {
+      callback(error, origins)
+    })
+  }
+}
 
-* `.add(path / paths)`: Add files, directories, or glob patterns for tracking.
-Takes an array of strings or just one string.
-* `.on(event, callback)`: Listen for an FS event.
-Available events: `add`, `addDir`, `change`, `unlink`, `unlinkDir`, `ready`,
-`raw`, `error`.
-Additionally `all` is available which gets emitted with the underlying event
-name and path for every event other than `ready`, `raw`, and `error`.  `raw` is internal, use it carefully.
-* `.unwatch(path / paths)`: Stop watching files, directories, or glob patterns.
-Takes an array of strings or just one string.
-* `.close()`: **async** Removes all listeners from watched files. Asynchronous, returns Promise. Use with `await` to ensure bugs don't happen.
-* `.getWatched()`: Returns an object representing all the paths on the file
-system being watched by this `FSWatcher` instance. The object's keys are all the
-directories (using absolute paths unless the `cwd` option was used), and the
-values are arrays of the names of the items contained in each directory.
+// Adds headers: Access-Control-Allow-Origin: <matched origin>, Vary: Origin
+app.get('/products/:id', cors(corsOptions), function (req, res, next) {
+  res.json({msg: 'Hello'})
+})
 
-## CLI
+app.listen(80, function () {
+  console.log('web server listening on port 80')
+})
+```
 
-If you need a CLI interface for your file watching, check out
-[chokidar-cli](https://github.com/open-cli-tools/chokidar-cli), allowing you to
-execute a command on each change, or get a stdio stream of change events.
+### Enabling CORS Pre-Flight
 
-## Install Troubleshooting
+Certain CORS requests are considered 'complex' and require an initial
+`OPTIONS` request (called the "pre-flight request"). An example of a
+'complex' CORS request is one that uses an HTTP verb other than
+GET/HEAD/POST (such as DELETE) or that uses custom headers. To enable
+pre-flighting, you must add a new OPTIONS handler for the route you want
+to support:
 
-* `npm WARN optional dep failed, continuing fsevents@n.n.n`
-  * This message is normal part of how `npm` handles optional dependencies and is
-    not indicative of a problem. Even if accompanied by other related error messages,
-    Chokidar should function properly.
+```javascript
+var express = require('express')
+var cors = require('cors')
+var app = express()
 
-* `TypeError: fsevents is not a constructor`
-  * Update chokidar by doing `rm -rf node_modules package-lock.json yarn.lock && npm install`, or update your dependency that uses chokidar.
+app.options('/products/:id', cors()) // preflight for DELETE
+app.del('/products/:id', cors(), function (req, res, next) {
+  res.json({msg: 'Hello'})
+})
 
-* Chokidar is producing `ENOSP` error on Linux, like this:
-  * `bash: cannot set terminal process group (-1): Inappropriate ioctl for device bash: no job control in this shell`
-  `Error: watch /home/ ENOSPC`
-  * This means Chokidar ran out of file handles and you'll need to increase their count by executing the following command in Terminal:
-  `echo fs.inotify.max_user_watches=524288 | sudo tee -a /etc/sysctl.conf && sudo sysctl -p`
+app.listen(80, function () {
+  console.log('web server listening on port 80')
+})
+```
 
-## Changelog
+You can also enable pre-flight across-the-board like so:
 
-For more detailed changelog, see [`full_changelog.md`](.github/full_changelog.md).
-- **v3.5 (Jan 6, 2021):** Support for ARM Macs with Apple Silicon. Fixes for deleted symlinks.
-- **v3.4 (Apr 26, 2020):** Support for directory-based symlinks. Fixes for macos file replacement.
-- **v3.3 (Nov 2, 2019):** `FSWatcher#close()` method became async. That fixes IO race conditions related to close method.
-- **v3.2 (Oct 1, 2019):** Improve Linux RAM usage by 50%. Race condition fixes. Windows glob fixes. Improve stability by using tight range of dependency versions.
-- **v3.1 (Sep 16, 2019):** dotfiles are no longer filtered out by default. Use `ignored` option if needed. Improve initial Linux scan time by 50%.
-- **v3 (Apr 30, 2019):** massive CPU & RAM consumption improvements; reduces deps / package size by a factor of 17x and bumps Node.js requirement to v8.16 and higher.
-- **v2 (Dec 29, 2017):** Globs are now posix-style-only; without windows support. Tons of bugfixes.
-- **v1 (Apr 7, 2015):** Glob support, symlink support, tons of bugfixes. Node 0.8+ is supported
-- **v0.1 (Apr 20, 2012):** Initial release, extracted from [Brunch](https://github.com/brunch/brunch/blob/9847a065aea300da99bd0753f90354cde9de1261/src/helpers.coffee#L66)
+```javascript
+app.options('*', cors()) // include before other routes
+```
 
-## Also
+NOTE: When using this middleware as an application level middleware (for
+example, `app.use(cors())`), pre-flight requests are already handled for all
+routes.
 
-Why was chokidar named this way? What's the meaning behind it?
+### Customizing CORS Settings Dynamically per Request
 
->Chowkidar is a transliteration of a Hindi word meaning 'watchman, gatekeeper', चौकीदार. This ultimately comes from Sanskrit _ चतुष्क_ (crossway, quadrangle, consisting-of-four). This word is also used in other languages like Urdu as (چوکیدار) which is widely used in Pakistan and India. 
+For APIs that require different CORS configurations for specific routes or requests, you can dynamically generate CORS options based on the incoming request. The `cors` middleware allows you to achieve this by passing a function instead of static options. This function is called for each incoming request and must use the callback pattern to return the appropriate CORS options.
+
+The function accepts:
+1. **`req`**: 
+   - The incoming request object.
+
+2. **`callback(error, corsOptions)`**: 
+   - A function used to return the computed CORS options.
+   - **Arguments**:
+     - **`error`**: Pass `null` if there’s no error, or an error object to indicate a failure.
+     - **`corsOptions`**: An object specifying the CORS policy for the current request.
+
+Here’s an example that handles both public routes and restricted, credential-sensitive routes:
+
+```javascript
+var dynamicCorsOptions = function(req, callback) {
+  var corsOptions;
+  if (req.path.startsWith('/auth/connect/')) {
+    // Access-Control-Allow-Origin: http://mydomain.com, Access-Control-Allow-Credentials: true, Vary: Origin
+    corsOptions = {
+      origin: 'http://mydomain.com',
+      credentials: true
+    };
+  } else {
+    // Access-Control-Allow-Origin: *
+    corsOptions = { origin: '*' };
+  }
+  callback(null, corsOptions);
+};
+
+app.use(cors(dynamicCorsOptions));
+
+app.get('/auth/connect/twitter', function (req, res) {
+  res.send('Hello');
+});
+
+app.get('/public', function (req, res) {
+  res.send('Hello');
+});
+
+app.listen(80, function () {
+  console.log('web server listening on port 80')
+})
+```
+
+## Configuration Options
+
+* `origin`: Configures the **Access-Control-Allow-Origin** CORS header. Possible values:
+  - `Boolean` - set `origin` to `true` to reflect the [request origin](https://datatracker.ietf.org/doc/html/draft-abarth-origin-09), as defined by `req.header('Origin')`, or set it to `false` to disable CORS.
+  - `String` - set `origin` to a specific origin. For example, if you set it to
+    - `"http://example.com"` only requests from "http://example.com" will be allowed.
+    - `"*"` for all domains to be allowed. 
+  - `RegExp` - set `origin` to a regular expression pattern which will be used to test the request origin. If it's a match, the request origin will be reflected. For example the pattern `/example\.com$/` will reflect any request that is coming from an origin ending with "example.com".
+  - `Array` - set `origin` to an array of valid origins. Each origin can be a `String` or a `RegExp`. For example `["http://example1.com", /\.example2\.com$/]` will accept any request from "http://example1.com" or from a subdomain of "example2.com".
+  - `Function` - set `origin` to a function implementing some custom logic. The function takes the request origin as the first parameter and a callback (called as `callback(err, origin)`, where `origin` is a non-function value of the `origin` option) as the second.
+* `methods`: Configures the **Access-Control-Allow-Methods** CORS header. Expects a comma-delimited string (ex: 'GET,PUT,POST') or an array (ex: `['GET', 'PUT', 'POST']`).
+* `allowedHeaders`: Configures the **Access-Control-Allow-Headers** CORS header. Expects a comma-delimited string (ex: 'Content-Type,Authorization') or an array (ex: `['Content-Type', 'Authorization']`). If not specified, defaults to reflecting the headers specified in the request's **Access-Control-Request-Headers** header.
+* `exposedHeaders`: Configures the **Access-Control-Expose-Headers** CORS header. Expects a comma-delimited string (ex: 'Content-Range,X-Content-Range') or an array (ex: `['Content-Range', 'X-Content-Range']`). If not specified, no custom headers are exposed.
+* `credentials`: Configures the **Access-Control-Allow-Credentials** CORS header. Set to `true` to pass the header, otherwise it is omitted.
+* `maxAge`: Configures the **Access-Control-Max-Age** CORS header. Set to an integer to pass the header, otherwise it is omitted.
+* `preflightContinue`: Pass the CORS preflight response to the next handler.
+* `optionsSuccessStatus`: Provides a status code to use for successful `OPTIONS` requests, since some legacy browsers (IE11, various SmartTVs) choke on `204`.
+
+The default configuration is the equivalent of:
+
+```json
+{
+  "origin": "*",
+  "methods": "GET,HEAD,PUT,PATCH,POST,DELETE",
+  "preflightContinue": false,
+  "optionsSuccessStatus": 204
+}
+```
+
+## Common Misconceptions
+
+### "CORS blocks requests from disallowed origins"
+
+**No.** Your server receives and processes every request. CORS headers tell the browser whether JavaScript can read the response—not whether the request is allowed.
+
+### "CORS protects my API from unauthorized access"
+
+**No.** CORS is not access control. Any HTTP client (curl, Postman, another server) can call your API regardless of CORS settings. Use authentication and authorization to protect your API.
+
+### "Setting `origin: 'http://example.com'` means only that domain can access my server"
+
+**No.** It means browsers will only let JavaScript from that origin read responses. The server still responds to all requests.
 
 ## License
 
-MIT (c) Paul Miller (<https://paulmillr.com>), see [LICENSE](LICENSE) file.
+[MIT License](http://www.opensource.org/licenses/mit-license.php)
+
+## Original Author
+
+[Troy Goode](https://github.com/TroyGoode) ([troygoode@gmail.com](mailto:troygoode@gmail.com))
+
+[coveralls-image]: https://img.shields.io/coveralls/expressjs/cors/master.svg
+[coveralls-url]: https://coveralls.io/r/expressjs/cors?branch=master
+[downloads-image]: https://img.shields.io/npm/dm/cors.svg
+[downloads-url]: https://npmjs.com/package/cors
+[github-actions-ci-image]: https://img.shields.io/github/actions/workflow/status/expressjs/cors/ci.yml?branch=master&label=ci
+[github-actions-ci-url]: https://github.com/expressjs/cors?query=workflow%3Aci
+[npm-image]: https://img.shields.io/npm/v/cors.svg
+[npm-url]: https://npmjs.com/package/cors
