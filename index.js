@@ -1,54 +1,55 @@
-export const balanced = (a, b, str) => {
-    const ma = a instanceof RegExp ? maybeMatch(a, str) : a;
-    const mb = b instanceof RegExp ? maybeMatch(b, str) : b;
-    const r = ma !== null && mb != null && range(ma, mb, str);
-    return (r && {
-        start: r[0],
-        end: r[1],
-        pre: str.slice(0, r[0]),
-        body: str.slice(r[0] + ma.length, r[1]),
-        post: str.slice(r[1] + mb.length),
-    });
-};
-const maybeMatch = (reg, str) => {
-    const m = str.match(reg);
-    return m ? m[0] : null;
-};
-export const range = (a, b, str) => {
-    let begs, beg, left, right = undefined, result;
-    let ai = str.indexOf(a);
-    let bi = str.indexOf(b, ai + 1);
-    let i = ai;
-    if (ai >= 0 && bi > 0) {
-        if (a === b) {
-            return [ai, bi];
-        }
-        begs = [];
-        left = str.length;
-        while (i >= 0 && !result) {
-            if (i === ai) {
-                begs.push(i);
-                ai = str.indexOf(a, i + 1);
-            }
-            else if (begs.length === 1) {
-                const r = begs.pop();
-                if (r !== undefined)
-                    result = [r, bi];
-            }
-            else {
-                beg = begs.pop();
-                if (beg !== undefined && beg < left) {
-                    left = beg;
-                    right = bi;
-                }
-                bi = str.indexOf(b, i + 1);
-            }
-            i = ai < bi && ai >= 0 ? ai : bi;
-        }
-        if (begs.length && right !== undefined) {
-            result = [left, right];
-        }
-    }
-    return result;
-};
-//# sourceMappingURL=index.js.map
+/*!
+ * body-parser
+ * Copyright(c) 2014-2015 Douglas Christopher Wilson
+ * MIT Licensed
+ */
+
+'use strict'
+
+/**
+ * @typedef {Object} Parsers
+ * @property {Function} json JSON parser
+ * @property {Function} raw Raw parser
+ * @property {Function} text Text parser
+ * @property {Function} urlencoded URL-encoded parser
+ */
+
+/**
+ * Module exports.
+ * @type {Function & Parsers}
+ */
+exports = module.exports = bodyParser
+
+/**
+ * JSON parser.
+ * @public
+ */
+exports.json = require('./lib/types/json')
+
+/**
+ * Raw parser.
+ * @public
+ */
+exports.raw = require('./lib/types/raw')
+
+/**
+ * Text parser.
+ * @public
+ */
+exports.text = require('./lib/types/text')
+
+/**
+ * URL-encoded parser.
+ * @public
+ */
+exports.urlencoded = require('./lib/types/urlencoded')
+
+/**
+ * Create a middleware to parse json and urlencoded bodies.
+ *
+ * @deprecated
+ * @public
+ */
+function bodyParser () {
+  throw new Error('The bodyParser() generic has been split into individual middleware to use instead.')
+}
