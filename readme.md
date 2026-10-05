@@ -1,70 +1,33 @@
-# has-flag [![Build Status](https://travis-ci.org/sindresorhus/has-flag.svg?branch=master)](https://travis-ci.org/sindresorhus/has-flag)
+<a href="https://promisesaplus.com/"><img src="https://promisesaplus.com/assets/logo-small.png" align="right" /></a>
 
-> Check if [`argv`](https://nodejs.org/docs/latest/api/process.html#process_process_argv) has a specific flag
+# is-promise
 
-Correctly stops looking after an `--` argument terminator.
+  Test whether an object looks like a promises-a+ promise
 
-
-## Install
-
-```
-$ npm install has-flag
-```
+ [![Build Status](https://img.shields.io/travis/then/is-promise/master.svg)](https://travis-ci.org/then/is-promise)
+ [![Dependency Status](https://img.shields.io/david/then/is-promise.svg)](https://david-dm.org/then/is-promise)
+ [![NPM version](https://img.shields.io/npm/v/is-promise.svg)](https://www.npmjs.org/package/is-promise)
 
 
-## Usage
 
-```js
-// foo.js
-const hasFlag = require('has-flag');
+## Installation
 
-hasFlag('unicorn');
-//=> true
+    $ npm install is-promise
 
-hasFlag('--unicorn');
-//=> true
-
-hasFlag('f');
-//=> true
-
-hasFlag('-f');
-//=> true
-
-hasFlag('foo=bar');
-//=> true
-
-hasFlag('foo');
-//=> false
-
-hasFlag('rainbow');
-//=> false
-```
-
-```
-$ node foo.js -f --unicorn --foo=bar -- --rainbow
-```
-
+You can also use it client side via npm.
 
 ## API
 
-### hasFlag(flag, [argv])
+```typescript
+import isPromise from 'is-promise';
 
-Returns a boolean for whether the flag exists.
-
-#### flag
-
-Type: `string`
-
-CLI flag to look for. The `--` prefix is optional.
-
-#### argv
-
-Type: `string[]`<br>
-Default: `process.argv`
-
-CLI arguments.
-
+isPromise(Promise.resolve());//=>true
+isPromise({then:function () {...}});//=>true
+isPromise(null);//=>false
+isPromise({});//=>false
+isPromise({then: true})//=>false
+```
 
 ## License
 
-MIT © [Sindre Sorhus](https://sindresorhus.com)
+  MIT
