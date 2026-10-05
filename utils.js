@@ -1,100 +1,122 @@
-'use strict'
+'use strict';
 
-/**
- * Module dependencies.
- */
-
-const bytes = require('bytes')
-const contentType = require('content-type')
-const typeis = require('type-is')
-
-/**
- * Module exports.
- */
-module.exports = {
-  getCharset,
-  normalizeOptions,
-  passthrough
-}
-
-/**
- * Get the charset of a request.
- *
- * @param {Object} req
- * @returns {string | undefined}
- * @private
- */
-function getCharset (req) {
-  const header = req.headers['content-type']
-  if (!header) return undefined
-  return contentType.parse(header).parameters.charset?.toLowerCase()
-}
-
-/**
- * Get the simple type checker.
- *
- * @param {string | string[]} type
- * @returns {Function}
- * @private
- */
-function typeChecker (type) {
-  return function checkType (req) {
-    return Boolean(typeis(req, type))
+exports.isInteger = num => {
+  if (typeof num === 'number') {
+    return Number.isInteger(num);
   }
-}
+  if (typeof num === 'string' && num.trim() !== '') {
+    return Number.isInteger(Number(num));
+  }
+  return false;
+};
 
 /**
- * Normalizes the common options for all parsers.
- *
- * @param {Object} options options to normalize
- * @param {string | string[] | Function} defaultType default content type(s) or a function to determine it
- * @returns {Object}
- * @private
+ * Find a node of the given type
  */
-function normalizeOptions (options, defaultType) {
-  if (!defaultType) {
-    // Parsers must define a default content type
-    throw new TypeError('defaultType must be provided')
-  }
 
-  const inflate = options?.inflate !== false
-  const limit = typeof options?.limit === 'undefined' || options?.limit === null
-    ? 102400 // 100kb default
-    : bytes.parse(options.limit)
-  const type = options?.type || defaultType
-  const verify = options?.verify || false
-  const defaultCharset = options?.defaultCharset || 'utf-8'
-
-  if (limit === null) {
-    throw new TypeError(`option limit "${String(options.limit)}" is invalid`)
-  }
-
-  if (verify !== false && typeof verify !== 'function') {
-    throw new TypeError('option verify must be function')
-  }
-
-  // create the appropriate type checking function
-  const shouldParse = typeof type !== 'function'
-    ? typeChecker(type)
-    : type
-
-  return {
-    inflate,
-    limit,
-    verify,
-    defaultCharset,
-    shouldParse
-  }
-}
+exports.find = (node, type) => node.nodes.find(node => node.type === type);
 
 /**
- * Passthrough function that returns input unchanged.
- * Used by parsers that don't need to transform the data.
- *
- * @param {*} value
- * @returns {*}
- * @private
+ * Find a node of the given type
  */
-function passthrough (value) {
-  return value
-}
+
+exports.exceedsLimit = (min, max, step = 1, limit) => {
+  if (limit === false) return false;
+  if (!exports.isInteger(min) || !exports.isInteger(max)) return false;
+  return ((Number(max) - Number(min)) / Number(step)) >= limit;
+};
+
+/**
+ * Escape the given node with '\\' before node.value
+ */
+
+exports.escapeNode = (block, n = 0, type) => {
+  const node = block.nodes[n];
+  if (!node) return;
+
+  if ((type && node.type === type) || node.type === 'open' || node.type === 'close') {
+    if (node.escaped !== true) {
+      node.value = '\\' + node.value;
+      node.escaped = true;
+    }
+  }
+};
+
+/**
+ * Returns true if the given brace node should be enclosed in literal braces
+ */
+
+exports.encloseBrace = node => {
+  if (node.type !== 'brace') return false;
+  if ((node.commas >> 0 + node.ranges >> 0) === 0) {
+    node.invalid = true;
+    return true;
+  }
+  return false;
+};
+
+/**
+ * Returns true if a brace node is invalid.
+ */
+
+exports.isInvalidBrace = block => {
+  if (block.type !== 'brace') return false;
+  if (block.invalid === true || block.dollar) return true;
+  if ((block.commas >> 0 + block.ranges >> 0) === 0) {
+    block.invalid = true;
+    return true;
+  }
+  if (block.open !== true || block.close !== true) {
+    block.invalid = true;
+    return true;
+  }
+  return false;
+};
+
+/**
+ * Returns true if a node is an open or close node
+ */
+
+exports.isOpenOrClose = node => {
+  if (node.type === 'open' || node.type === 'close') {
+    return true;
+  }
+  return node.open === true || node.close === true;
+};
+
+/**
+ * Reduce an array of text nodes.
+ */
+
+exports.reduce = nodes => nodes.reduce((acc, node) => {
+  if (node.type === 'text') acc.push(node.value);
+  if (node.type === 'range') node.type = 'text';
+  return acc;
+}, []);
+
+/**
+ * Flatten an array
+ */
+
+exports.flatten = (...args) => {
+  const result = [];
+
+  const flat = arr => {
+    for (let i = 0; i < arr.length; i++) {
+      const ele = arr[i];
+
+      if (Array.isArray(ele)) {
+        flat(ele);
+        continue;
+      }
+
+      if (ele !== undefined) {
+        result.push(ele);
+      }
+    }
+    return result;
+  };
+
+  flat(args);
+  return result;
+};

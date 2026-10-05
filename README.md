@@ -1,509 +1,586 @@
-# body-parser
+# braces [![Donate](https://img.shields.io/badge/Donate-PayPal-green.svg)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=W8YFZ425KND68) [![NPM version](https://img.shields.io/npm/v/braces.svg?style=flat)](https://www.npmjs.com/package/braces) [![NPM monthly downloads](https://img.shields.io/npm/dm/braces.svg?style=flat)](https://npmjs.org/package/braces) [![NPM total downloads](https://img.shields.io/npm/dt/braces.svg?style=flat)](https://npmjs.org/package/braces) [![Linux Build Status](https://img.shields.io/travis/micromatch/braces.svg?style=flat&label=Travis)](https://travis-ci.org/micromatch/braces)
 
-[![NPM Version][npm-version-image]][npm-url]
-[![NPM Downloads][npm-downloads-image]][npm-url]
-[![Build Status][ci-image]][ci-url]
-[![Test Coverage][coveralls-image]][coveralls-url]
-[![OpenSSF Scorecard Badge][ossf-scorecard-badge]][ossf-scorecard-visualizer]
+> Bash-like brace expansion, implemented in JavaScript. Safer than other brace expansion libs, with complete support for the Bash 4.3 braces specification, without sacrificing speed.
 
-Node.js body parsing middleware.
+Please consider following this project's author, [Jon Schlinkert](https://github.com/jonschlinkert), and consider starring the project to show your :heart: and support.
 
-Parse incoming request bodies in a middleware before your handlers, available
-under the `req.body` property.
+## Install
 
-**Note** As `req.body`'s shape is based on user-controlled input, all
-properties and values in this object are untrusted and should be validated
-before trusting. For example, `req.body.foo.toString()` may fail in multiple
-ways, for example the `foo` property may not be there or may not be a string,
-and `toString` may not be a function and instead a string or other user input.
-
-[Learn about the anatomy of an HTTP transaction in Node.js](https://nodejs.org/en/learn/http/anatomy-of-an-http-transaction).
-
-_This does not handle multipart bodies_, due to their complex and typically
-large nature. For multipart bodies, you may be interested in the following
-modules:
-
-  * [busboy](https://www.npmjs.com/package/busboy#readme) and
-    [connect-busboy](https://www.npmjs.com/package/connect-busboy#readme)
-  * [multiparty](https://www.npmjs.com/package/multiparty#readme) and
-    [connect-multiparty](https://www.npmjs.com/package/connect-multiparty#readme)
-  * [formidable](https://www.npmjs.com/package/formidable#readme)
-  * [multer](https://www.npmjs.com/package/multer#readme)
-
-This module provides the following parsers:
-
-  * [JSON body parser](#bodyparserjsonoptions)
-  * [Raw body parser](#bodyparserrawoptions)
-  * [Text body parser](#bodyparsertextoptions)
-  * [URL-encoded form body parser](#bodyparserurlencodedoptions)
-
-Other body parsers you might be interested in:
-
-- [body](https://www.npmjs.com/package/body#readme)
-- [co-body](https://www.npmjs.com/package/co-body#readme)
-
-## Installation
+Install with [npm](https://www.npmjs.com/):
 
 ```sh
-$ npm install body-parser
+$ npm install --save braces
 ```
 
-## API
+## v3.0.0 Released!!
+
+See the [changelog](CHANGELOG.md) for details.
+
+## Why use braces?
+
+Brace patterns make globs more powerful by adding the ability to match specific ranges and sequences of characters.
+
+- **Accurate** - complete support for the [Bash 4.3 Brace Expansion](www.gnu.org/software/bash/) specification (passes all of the Bash braces tests)
+- **[fast and performant](#benchmarks)** - Starts fast, runs fast and [scales well](#performance) as patterns increase in complexity.
+- **Organized code base** - The parser and compiler are easy to maintain and update when edge cases crop up.
+- **Well-tested** - Thousands of test assertions, and passes all of the Bash, minimatch, and [brace-expansion](https://github.com/juliangruber/brace-expansion) unit tests (as of the date this was written).
+- **Safer** - You shouldn't have to worry about users defining aggressive or malicious brace patterns that can break your application. Braces takes measures to prevent malicious regex that can be used for DDoS attacks (see [catastrophic backtracking](https://www.regular-expressions.info/catastrophic.html)).
+- [Supports lists](#lists) - (aka "sets") `a/{b,c}/d` => `['a/b/d', 'a/c/d']`
+- [Supports sequences](#sequences) - (aka "ranges") `{01..03}` => `['01', '02', '03']`
+- [Supports steps](#steps) - (aka "increments") `{2..10..2}` => `['2', '4', '6', '8', '10']`
+- [Supports escaping](#escaping) - To prevent evaluation of special characters.
+
+## Usage
+
+The main export is a function that takes one or more brace `patterns` and `options`.
 
 ```js
-// Import all parsers
-const bodyParser = require('body-parser')
+const braces = require('braces');
+// braces(patterns[, options]);
 
-// Or import individual parsers directly
-const json = require('body-parser/json')
-const urlencoded = require('body-parser/urlencoded')
-const raw = require('body-parser/raw')
-const text = require('body-parser/text')
+console.log(braces(['{01..05}', '{a..e}']));
+//=> ['(0[1-5])', '([a-e])']
+
+console.log(braces(['{01..05}', '{a..e}'], { expand: true }));
+//=> ['01', '02', '03', '04', '05', 'a', 'b', 'c', 'd', 'e']
 ```
 
-The `bodyParser` object exposes various factories to create middlewares. All
-middlewares will populate the `req.body` property with the parsed body when
-the `Content-Type` request header matches the `type` option.
+### Brace Expansion vs. Compilation
 
-The various errors returned by this module are described in the
-[errors section](#errors).
+By default, brace patterns are compiled into strings that are optimized for creating regular expressions and matching.
 
-### bodyParser.json([options])
-
-Returns middleware that only parses `json` and only looks at requests where
-the `Content-Type` header matches the `type` option. This parser accepts any
-Unicode encoding of the body and supports automatic inflation of `gzip`,
-`br` (brotli) and `deflate` encodings.
-
-A new `body` object containing the parsed data is populated on the `request`
-object after the middleware (i.e. `req.body`).
-
-#### Options
-
-The `json` function takes an optional `options` object that may contain any of
-the following keys:
-
-##### defaultCharset
-
-Specify the default character set for the json content if the charset is not
-specified in the `Content-Type` header of the request. Defaults to `utf-8`.
-
-##### inflate
-
-When set to `true`, then deflated (compressed) bodies will be inflated; when
-`false`, deflated bodies are rejected. Defaults to `true`.
-
-##### limit
-
-Controls the maximum request body size. If this is a number, then the value
-specifies the number of bytes; if it is a string, the value is passed to the
-[bytes](https://www.npmjs.com/package/bytes) library for parsing. Defaults
-to `'100kb'`.
-
-> It’s recommended not to configure a very high limit and to use the default value whenever possible. Allowing larger payloads increases memory usage because of the resources required for decoding and transformations, and it can also lead to longer response times as more data is processed. By ‘very high’, we mean values above the default, for example payloads of 5 MB or more can already start to introduce these risks. With the default limits, these issues do not occur.
-
-##### reviver
-
-The `reviver` option is passed directly to `JSON.parse` as the second
-argument. You can find more information on this argument
-[in the MDN documentation about JSON.parse](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/JSON/parse#the_reviver_parameter).
-
-##### strict
-
-When set to `true`, will only accept arrays and objects; when `false` will
-accept anything `JSON.parse` accepts. Defaults to `true`.
-
-##### type
-
-The `type` option is used to determine what media type the middleware will
-parse. This option can be a string, array of strings, or a function. If not a
-function, `type` option is passed directly to the
-[type-is](https://www.npmjs.com/package/type-is#readme) library and this can
-be an extension name (like `json`), a mime type (like `application/json`), or
-a mime type with a wildcard (like `*/*` or `*/json`). If a function, the `type`
-option is called as `fn(req)` and the request is parsed if it returns a truthy
-value. Defaults to `application/json`.
-
-##### verify
-
-The `verify` option, if supplied, is called as `verify(req, res, buf, encoding)`,
-where `buf` is a `Buffer` of the raw request body and `encoding` is the
-encoding of the request. The parsing can be aborted by throwing an error.
-
-### bodyParser.raw([options])
-
-Returns middleware that parses all bodies as a `Buffer` and only looks at
-requests where the `Content-Type` header matches the `type` option. This
-parser supports automatic inflation of `gzip`, `br` (brotli) and `deflate`
-encodings.
-
-A new `body` object containing the parsed data is populated on the `request`
-object after the middleware (i.e. `req.body`). This will be a `Buffer` object
-of the body.
-
-#### Options
-
-The `raw` function takes an optional `options` object that may contain any of
-the following keys:
-
-##### inflate
-
-When set to `true`, then deflated (compressed) bodies will be inflated; when
-`false`, deflated bodies are rejected. Defaults to `true`.
-
-##### limit
-
-Controls the maximum request body size. If this is a number, then the value
-specifies the number of bytes; if it is a string, the value is passed to the
-[bytes](https://www.npmjs.com/package/bytes) library for parsing. Defaults
-to `'100kb'`.
-
-> It’s recommended not to configure a very high limit and to use the default value whenever possible. Allowing larger payloads increases memory usage because of the resources required for decoding and transformations, and it can also lead to longer response times as more data is processed. By ‘very high’, we mean values above the default, for example payloads of 5 MB or more can already start to introduce these risks. With the default limits, these issues do not occur.
-
-##### type
-
-The `type` option is used to determine what media type the middleware will
-parse. This option can be a string, array of strings, or a function.
-If not a function, `type` option is passed directly to the
-[type-is](https://www.npmjs.com/package/type-is#readme) library and this
-can be an extension name (like `bin`), a mime type (like
-`application/octet-stream`), or a mime type with a wildcard (like `*/*` or
-`application/*`). If a function, the `type` option is called as `fn(req)`
-and the request is parsed if it returns a truthy value. Defaults to
-`application/octet-stream`.
-
-##### verify
-
-The `verify` option, if supplied, is called as `verify(req, res, buf, encoding)`,
-where `buf` is a `Buffer` of the raw request body and `encoding` is the
-encoding of the request. The parsing can be aborted by throwing an error.
-
-### bodyParser.text([options])
-
-Returns middleware that parses all bodies as a string and only looks at
-requests where the `Content-Type` header matches the `type` option. This
-parser supports automatic inflation of `gzip`, `br` (brotli) and `deflate`
-encodings.
-
-A new `body` string containing the parsed data is populated on the `request`
-object after the middleware (i.e. `req.body`). This will be a string of the
-body.
-
-#### Options
-
-The `text` function takes an optional `options` object that may contain any of
-the following keys:
-
-##### defaultCharset
-
-Specify the default character set for the text content if the charset is not
-specified in the `Content-Type` header of the request. Defaults to `utf-8`.
-
-##### inflate
-
-When set to `true`, then deflated (compressed) bodies will be inflated; when
-`false`, deflated bodies are rejected. Defaults to `true`.
-
-##### limit
-
-Controls the maximum request body size. If this is a number, then the value
-specifies the number of bytes; if it is a string, the value is passed to the
-[bytes](https://www.npmjs.com/package/bytes) library for parsing. Defaults
-to `'100kb'`.
-
-> It’s recommended not to configure a very high limit and to use the default value whenever possible. Allowing larger payloads increases memory usage because of the resources required for decoding and transformations, and it can also lead to longer response times as more data is processed. By ‘very high’, we mean values above the default, for example payloads of 5 MB or more can already start to introduce these risks. With the default limits, these issues do not occur.
-
-##### type
-
-The `type` option is used to determine what media type the middleware will
-parse. This option can be a string, array of strings, or a function. If not
-a function, `type` option is passed directly to the
-[type-is](https://www.npmjs.com/package/type-is#readme) library and this can
-be an extension name (like `txt`), a mime type (like `text/plain`), or a mime
-type with a wildcard (like `*/*` or `text/*`). If a function, the `type`
-option is called as `fn(req)` and the request is parsed if it returns a
-truthy value. Defaults to `text/plain`.
-
-##### verify
-
-The `verify` option, if supplied, is called as `verify(req, res, buf, encoding)`,
-where `buf` is a `Buffer` of the raw request body and `encoding` is the
-encoding of the request. The parsing can be aborted by throwing an error.
-
-### bodyParser.urlencoded([options])
-
-Returns middleware that only parses `urlencoded` bodies and only looks at
-requests where the `Content-Type` header matches the `type` option. This
-parser accepts only UTF-8 and ISO-8859-1 encodings of the body and supports 
-automatic inflation of `gzip`, `br` (brotli) and `deflate` encodings.
-
-A new `body` object containing the parsed data is populated on the `request`
-object after the middleware (i.e. `req.body`). This object will contain
-key-value pairs, where the value can be a string or array (when `extended` is
-`false`), or any type (when `extended` is `true`).
-
-#### Options
-
-The `urlencoded` function takes an optional `options` object that may contain
-any of the following keys:
-
-##### extended
-
-The "extended" syntax allows for rich objects and arrays to be encoded into the
-URL-encoded format, allowing for a JSON-like experience with URL-encoded. For
-more information, please [see the qs
-library](https://www.npmjs.com/package/qs#readme).
-
-Defaults to `false`.
-
-##### inflate
-
-When set to `true`, then deflated (compressed) bodies will be inflated; when
-`false`, deflated bodies are rejected. Defaults to `true`.
-
-##### limit
-
-Controls the maximum request body size. If this is a number, then the value
-specifies the number of bytes; if it is a string, the value is passed to the
-[bytes](https://www.npmjs.com/package/bytes) library for parsing. Defaults
-to `'100kb'`.
-
-> It’s recommended not to configure a very high limit and to use the default value whenever possible. Allowing larger payloads increases memory usage because of the resources required for decoding and transformations, and it can also lead to longer response times as more data is processed. By ‘very high’, we mean values above the default, for example payloads of 5 MB or more can already start to introduce these risks. With the default limits, these issues do not occur.
-
-##### parameterLimit
-
-The `parameterLimit` option controls the maximum number of parameters that
-are allowed in the URL-encoded data. If a request contains more parameters
-than this value, a 413 will be returned to the client. Defaults to `1000`.
-
-##### type
-
-The `type` option is used to determine what media type the middleware will
-parse. This option can be a string, array of strings, or a function. If not
-a function, `type` option is passed directly to the
-[type-is](https://www.npmjs.com/package/type-is#readme) library and this can
-be an extension name (like `urlencoded`), a mime type (like
-`application/x-www-form-urlencoded`), or a mime type with a wildcard (like
-`*/x-www-form-urlencoded`). If a function, the `type` option is called as
-`fn(req)` and the request is parsed if it returns a truthy value. Defaults
-to `application/x-www-form-urlencoded`.
-
-##### verify
-
-The `verify` option, if supplied, is called as `verify(req, res, buf, encoding)`,
-where `buf` is a `Buffer` of the raw request body and `encoding` is the
-encoding of the request. The parsing can be aborted by throwing an error.
-
-##### defaultCharset
-
-The default charset to parse as, if not specified in content-type. Must be
-either `utf-8` or `iso-8859-1`. Defaults to `utf-8`.
-
-##### charsetSentinel
-
-Whether to let the value of the `utf8` parameter take precedence as the charset
-selector. It requires the form to contain a parameter named `utf8` with a value
-of `✓`. Defaults to `false`.
-
-##### interpretNumericEntities
-
-Whether to decode numeric entities such as `&#9786;` when parsing an iso-8859-1
-form. Defaults to `false`.
-
-
-##### depth
-
-The `depth` option is used to configure the maximum depth of the `qs` library when `extended` is `true`. This allows you to limit the amount of keys that are parsed and can be useful to prevent certain types of abuse. Defaults to `32`. It is recommended to keep this value as low as possible.
-
-## Errors
-
-The middlewares provided by this module create errors using the
-[`http-errors` module](https://www.npmjs.com/package/http-errors). The errors
-will typically have a `status`/`statusCode` property that contains the suggested
-HTTP response code, an `expose` property to determine if the `message` property
-should be displayed to the client, a `type` property to determine the type of
-error without matching against the `message`, and a `body` property containing
-the read body, if available.
-
-The following are the common errors created, though any error can come through
-for various reasons.
-
-### content encoding unsupported
-
-This error will occur when the request had a `Content-Encoding` header that
-contained an encoding but the "inflation" option was set to `false`. The
-`status` property is set to `415`, the `type` property is set to
-`'encoding.unsupported'`, and the `charset` property will be set to the
-encoding that is unsupported.
-
-### entity parse failed
-
-This error will occur when the request contained an entity that could not be
-parsed by the middleware. The `status` property is set to `400`, the `type`
-property is set to `'entity.parse.failed'`, and the `body` property is set to
-the entity value that failed parsing.
-
-### entity verify failed
-
-This error will occur when the request contained an entity that could not be
-failed verification by the defined `verify` option. The `status` property is
-set to `403`, the `type` property is set to `'entity.verify.failed'`, and the
-`body` property is set to the entity value that failed verification.
-
-### request aborted
-
-This error will occur when the request is aborted by the client before reading
-the body has finished. The `received` property will be set to the number of
-bytes received before the request was aborted and the `expected` property is
-set to the number of expected bytes. The `status` property is set to `400`
-and `type` property is set to `'request.aborted'`.
-
-### request entity too large
-
-This error will occur when the request body's size is larger than the "limit"
-option. The `limit` property will be set to the byte limit and the `length`
-property will be set to the request body's length. The `status` property is
-set to `413` and the `type` property is set to `'entity.too.large'`.
-
-### request size did not match content length
-
-This error will occur when the request's length did not match the length from
-the `Content-Length` header. This typically occurs when the request is malformed,
-typically when the `Content-Length` header was calculated based on characters
-instead of bytes. The `status` property is set to `400` and the `type` property
-is set to `'request.size.invalid'`.
-
-### stream encoding should not be set
-
-This error will occur when something called the `req.setEncoding` method prior
-to this middleware. This module operates directly on bytes only and you cannot
-call `req.setEncoding` when using this module. The `status` property is set to
-`500` and the `type` property is set to `'stream.encoding.set'`.
-
-### stream is not readable
-
-This error will occur when the request is no longer readable when this middleware
-attempts to read it. This typically means something other than a middleware from
-this module read the request body already and the middleware was also configured to
-read the same request. The `status` property is set to `500` and the `type`
-property is set to `'stream.not.readable'`.
-
-### too many parameters
-
-This error will occur when the content of the request exceeds the configured
-`parameterLimit` for the `urlencoded` parser. The `status` property is set to
-`413` and the `type` property is set to `'parameters.too.many'`.
-
-### unsupported charset "BOGUS"
-
-This error will occur when the request had a charset parameter in the
-`Content-Type` header, but the `iconv-lite` module does not support it OR the
-parser does not support it. The charset is contained in the message as well
-as in the `charset` property. The `status` property is set to `415`, the
-`type` property is set to `'charset.unsupported'`, and the `charset` property
-is set to the charset that is unsupported.
-
-### unsupported content encoding "bogus"
-
-This error will occur when the request had a `Content-Encoding` header that
-contained an unsupported encoding. The encoding is contained in the message
-as well as in the `encoding` property. The `status` property is set to `415`,
-the `type` property is set to `'encoding.unsupported'`, and the `encoding`
-property is set to the encoding that is unsupported.
-
-### The input exceeded the depth
-
-This error occurs when using `bodyParser.urlencoded` with the `extended` property set to `true` and the input exceeds the configured `depth` option. The `status` property is set to `400`. It is recommended to review the `depth` option and evaluate if it requires a higher value. When the `depth` option is set to `32` (default value), the error will not be thrown.
-
-## Examples
-
-### Express/Connect top-level generic
-
-This example demonstrates adding a generic JSON and URL-encoded parser as a
-top-level middleware, which will parse the bodies of all incoming requests.
-This is the simplest setup.
+**Compiled**
 
 ```js
-const express = require('express')
-const bodyParser = require('body-parser')
-
-const app = express()
-
-// parse application/x-www-form-urlencoded
-app.use(bodyParser.urlencoded())
-
-// parse application/json
-app.use(bodyParser.json())
-
-app.use(function (req, res) {
-  res.setHeader('Content-Type', 'text/plain')
-  res.write('you posted:\n')
-  res.end(String(JSON.stringify(req.body, null, 2)))
-})
+console.log(braces('a/{x,y,z}/b'));
+//=> ['a/(x|y|z)/b']
+console.log(braces(['a/{01..20}/b', 'a/{1..5}/b']));
+//=> [ 'a/(0[1-9]|1[0-9]|20)/b', 'a/([1-5])/b' ]
 ```
 
-### Express route-specific
+**Expanded**
 
-This example demonstrates adding body parsers specifically to the routes that
-need them. In general, this is the most recommended way to use body-parser with
-Express.
+Enable brace expansion by setting the `expand` option to true, or by using [braces.expand()](#expand) (returns an array similar to what you'd expect from Bash, or `echo {1..5}`, or [minimatch](https://github.com/isaacs/minimatch)):
 
 ```js
-const express = require('express')
-const bodyParser = require('body-parser')
+console.log(braces('a/{x,y,z}/b', { expand: true }));
+//=> ['a/x/b', 'a/y/b', 'a/z/b']
 
-const app = express()
-
-// create application/json parser
-const jsonParser = bodyParser.json()
-
-// create application/x-www-form-urlencoded parser
-const urlencodedParser = bodyParser.urlencoded()
-
-// POST /login gets urlencoded bodies
-app.post('/login', urlencodedParser, function (req, res) {
-  if (!req.body || !req.body.username) res.sendStatus(400)
-  res.send('welcome, ' + req.body.username)
-})
-
-// POST /api/users gets JSON bodies
-app.post('/api/users', jsonParser, function (req, res) {
-  if (!req.body) res.sendStatus(400)
-  // create user in req.body
-})
+console.log(braces.expand('{01..10}'));
+//=> ['01','02','03','04','05','06','07','08','09','10']
 ```
 
-### Change accepted type for parsers
+### Lists
 
-All the parsers accept a `type` option which allows you to change the
-`Content-Type` that the middleware will parse.
+Expand lists (like Bash "sets"):
 
 ```js
-const express = require('express')
-const bodyParser = require('body-parser')
+console.log(braces('a/{foo,bar,baz}/*.js'));
+//=> ['a/(foo|bar|baz)/*.js']
 
-const app = express()
-
-// parse various different custom JSON types as JSON
-app.use(bodyParser.json({ type: 'application/*+json' }))
-
-// parse some custom thing into a Buffer
-app.use(bodyParser.raw({ type: 'application/vnd.custom-type' }))
-
-// parse an HTML body into a string
-app.use(bodyParser.text({ type: 'text/html' }))
+console.log(braces.expand('a/{foo,bar,baz}/*.js'));
+//=> ['a/foo/*.js', 'a/bar/*.js', 'a/baz/*.js']
 ```
 
-## License
+### Sequences
 
-[MIT](LICENSE)
+Expand ranges of characters (like Bash "sequences"):
 
-[ci-image]: https://img.shields.io/github/actions/workflow/status/expressjs/body-parser/ci.yml?branch=master&label=ci
-[ci-url]: https://github.com/expressjs/body-parser/actions/workflows/ci.yml
-[coveralls-image]: https://img.shields.io/coverallsCoverage/github/expressjs/body-parser?branch=master
-[coveralls-url]: https://coveralls.io/r/expressjs/body-parser?branch=master
-[npm-downloads-image]: https://img.shields.io/npm/dm/body-parser
-[npm-url]: https://npmjs.com/package/body-parser
-[npm-version-image]: https://img.shields.io/npm/v/body-parser
-[ossf-scorecard-badge]: https://api.scorecard.dev/projects/github.com/expressjs/body-parser/badge
-[ossf-scorecard-visualizer]: https://ossf.github.io/scorecard-visualizer/#/projects/github.com/expressjs/body-parser
+```js
+console.log(braces.expand('{1..3}')); // ['1', '2', '3']
+console.log(braces.expand('a/{1..3}/b')); // ['a/1/b', 'a/2/b', 'a/3/b']
+console.log(braces('{a..c}', { expand: true })); // ['a', 'b', 'c']
+console.log(braces('foo/{a..c}', { expand: true })); // ['foo/a', 'foo/b', 'foo/c']
+
+// supports zero-padded ranges
+console.log(braces('a/{01..03}/b')); //=> ['a/(0[1-3])/b']
+console.log(braces('a/{001..300}/b')); //=> ['a/(0{2}[1-9]|0[1-9][0-9]|[12][0-9]{2}|300)/b']
+```
+
+See [fill-range](https://github.com/jonschlinkert/fill-range) for all available range-expansion options.
+
+### Steppped ranges
+
+Steps, or increments, may be used with ranges:
+
+```js
+console.log(braces.expand('{2..10..2}'));
+//=> ['2', '4', '6', '8', '10']
+
+console.log(braces('{2..10..2}'));
+//=> ['(2|4|6|8|10)']
+```
+
+When the [.optimize](#optimize) method is used, or [options.optimize](#optionsoptimize) is set to true, sequences are passed to [to-regex-range](https://github.com/jonschlinkert/to-regex-range) for expansion.
+
+### Nesting
+
+Brace patterns may be nested. The results of each expanded string are not sorted, and left to right order is preserved.
+
+**"Expanded" braces**
+
+```js
+console.log(braces.expand('a{b,c,/{x,y}}/e'));
+//=> ['ab/e', 'ac/e', 'a/x/e', 'a/y/e']
+
+console.log(braces.expand('a/{x,{1..5},y}/c'));
+//=> ['a/x/c', 'a/1/c', 'a/2/c', 'a/3/c', 'a/4/c', 'a/5/c', 'a/y/c']
+```
+
+**"Optimized" braces**
+
+```js
+console.log(braces('a{b,c,/{x,y}}/e'));
+//=> ['a(b|c|/(x|y))/e']
+
+console.log(braces('a/{x,{1..5},y}/c'));
+//=> ['a/(x|([1-5])|y)/c']
+```
+
+### Escaping
+
+**Escaping braces**
+
+A brace pattern will not be expanded or evaluted if _either the opening or closing brace is escaped_:
+
+```js
+console.log(braces.expand('a\\{d,c,b}e'));
+//=> ['a{d,c,b}e']
+
+console.log(braces.expand('a{d,c,b\\}e'));
+//=> ['a{d,c,b}e']
+```
+
+**Escaping commas**
+
+Commas inside braces may also be escaped:
+
+```js
+console.log(braces.expand('a{b\\,c}d'));
+//=> ['a{b,c}d']
+
+console.log(braces.expand('a{d\\,c,b}e'));
+//=> ['ad,ce', 'abe']
+```
+
+**Single items**
+
+Following bash conventions, a brace pattern is also not expanded when it contains a single character:
+
+```js
+console.log(braces.expand('a{b}c'));
+//=> ['a{b}c']
+```
+
+## Options
+
+### options.maxLength
+
+**Type**: `Number`
+
+**Default**: `10,000`
+
+**Description**: Limit the length of the input string. Useful when the input string is generated or your application allows users to pass a string, et cetera.
+
+```js
+console.log(braces('a/{b,c}/d', { maxLength: 3 })); //=> throws an error
+```
+
+### options.expand
+
+**Type**: `Boolean`
+
+**Default**: `undefined`
+
+**Description**: Generate an "expanded" brace pattern (alternatively you can use the `braces.expand()` method, which does the same thing).
+
+```js
+console.log(braces('a/{b,c}/d', { expand: true }));
+//=> [ 'a/b/d', 'a/c/d' ]
+```
+
+### options.nodupes
+
+**Type**: `Boolean`
+
+**Default**: `undefined`
+
+**Description**: Remove duplicates from the returned array.
+
+### options.rangeLimit
+
+**Type**: `Number`
+
+**Default**: `1000`
+
+**Description**: To prevent malicious patterns from being passed by users, an error is thrown when `braces.expand()` is used or `options.expand` is true and the generated range will exceed the `rangeLimit`.
+
+You can customize `options.rangeLimit` or set it to `Inifinity` to disable this altogether.
+
+**Examples**
+
+```js
+// pattern exceeds the "rangeLimit", so it's optimized automatically
+console.log(braces.expand('{1..1000}'));
+//=> ['([1-9]|[1-9][0-9]{1,2}|1000)']
+
+// pattern does not exceed "rangeLimit", so it's NOT optimized
+console.log(braces.expand('{1..100}'));
+//=> ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23', '24', '25', '26', '27', '28', '29', '30', '31', '32', '33', '34', '35', '36', '37', '38', '39', '40', '41', '42', '43', '44', '45', '46', '47', '48', '49', '50', '51', '52', '53', '54', '55', '56', '57', '58', '59', '60', '61', '62', '63', '64', '65', '66', '67', '68', '69', '70', '71', '72', '73', '74', '75', '76', '77', '78', '79', '80', '81', '82', '83', '84', '85', '86', '87', '88', '89', '90', '91', '92', '93', '94', '95', '96', '97', '98', '99', '100']
+```
+
+### options.transform
+
+**Type**: `Function`
+
+**Default**: `undefined`
+
+**Description**: Customize range expansion.
+
+**Example: Transforming non-numeric values**
+
+```js
+const alpha = braces.expand('x/{a..e}/y', {
+  transform(value, index) {
+    // When non-numeric values are passed, "value" is a character code.
+    return 'foo/' + String.fromCharCode(value) + '-' + index;
+  },
+});
+console.log(alpha);
+//=> [ 'x/foo/a-0/y', 'x/foo/b-1/y', 'x/foo/c-2/y', 'x/foo/d-3/y', 'x/foo/e-4/y' ]
+```
+
+**Example: Transforming numeric values**
+
+```js
+const numeric = braces.expand('{1..5}', {
+  transform(value) {
+    // when numeric values are passed, "value" is a number
+    return 'foo/' + value * 2;
+  },
+});
+console.log(numeric);
+//=> [ 'foo/2', 'foo/4', 'foo/6', 'foo/8', 'foo/10' ]
+```
+
+### options.quantifiers
+
+**Type**: `Boolean`
+
+**Default**: `undefined`
+
+**Description**: In regular expressions, quanitifiers can be used to specify how many times a token can be repeated. For example, `a{1,3}` will match the letter `a` one to three times.
+
+Unfortunately, regex quantifiers happen to share the same syntax as [Bash lists](#lists)
+
+The `quantifiers` option tells braces to detect when [regex quantifiers](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/RegExp#quantifiers) are defined in the given pattern, and not to try to expand them as lists.
+
+**Examples**
+
+```js
+const braces = require('braces');
+console.log(braces('a/b{1,3}/{x,y,z}'));
+//=> [ 'a/b(1|3)/(x|y|z)' ]
+console.log(braces('a/b{1,3}/{x,y,z}', { quantifiers: true }));
+//=> [ 'a/b{1,3}/(x|y|z)' ]
+console.log(braces('a/b{1,3}/{x,y,z}', { quantifiers: true, expand: true }));
+//=> [ 'a/b{1,3}/x', 'a/b{1,3}/y', 'a/b{1,3}/z' ]
+```
+
+### options.keepEscaping
+
+**Type**: `Boolean`
+
+**Default**: `undefined`
+
+**Description**: Do not strip backslashes that were used for escaping from the result.
+
+## What is "brace expansion"?
+
+Brace expansion is a type of parameter expansion that was made popular by unix shells for generating lists of strings, as well as regex-like matching when used alongside wildcards (globs).
+
+In addition to "expansion", braces are also used for matching. In other words:
+
+- [brace expansion](#brace-expansion) is for generating new lists
+- [brace matching](#brace-matching) is for filtering existing lists
+
+<details>
+<summary><strong>More about brace expansion</strong> (click to expand)</summary>
+
+There are two main types of brace expansion:
+
+1. **lists**: which are defined using comma-separated values inside curly braces: `{a,b,c}`
+2. **sequences**: which are defined using a starting value and an ending value, separated by two dots: `a{1..3}b`. Optionally, a third argument may be passed to define a "step" or increment to use: `a{1..100..10}b`. These are also sometimes referred to as "ranges".
+
+Here are some example brace patterns to illustrate how they work:
+
+**Sets**
+
+```
+{a,b,c}       => a b c
+{a,b,c}{1,2}  => a1 a2 b1 b2 c1 c2
+```
+
+**Sequences**
+
+```
+{1..9}        => 1 2 3 4 5 6 7 8 9
+{4..-4}       => 4 3 2 1 0 -1 -2 -3 -4
+{1..20..3}    => 1 4 7 10 13 16 19
+{a..j}        => a b c d e f g h i j
+{j..a}        => j i h g f e d c b a
+{a..z..3}     => a d g j m p s v y
+```
+
+**Combination**
+
+Sets and sequences can be mixed together or used along with any other strings.
+
+```
+{a,b,c}{1..3}   => a1 a2 a3 b1 b2 b3 c1 c2 c3
+foo/{a,b,c}/bar => foo/a/bar foo/b/bar foo/c/bar
+```
+
+The fact that braces can be "expanded" from relatively simple patterns makes them ideal for quickly generating test fixtures, file paths, and similar use cases.
+
+## Brace matching
+
+In addition to _expansion_, brace patterns are also useful for performing regular-expression-like matching.
+
+For example, the pattern `foo/{1..3}/bar` would match any of following strings:
+
+```
+foo/1/bar
+foo/2/bar
+foo/3/bar
+```
+
+But not:
+
+```
+baz/1/qux
+baz/2/qux
+baz/3/qux
+```
+
+Braces can also be combined with [glob patterns](https://github.com/jonschlinkert/micromatch) to perform more advanced wildcard matching. For example, the pattern `*/{1..3}/*` would match any of following strings:
+
+```
+foo/1/bar
+foo/2/bar
+foo/3/bar
+baz/1/qux
+baz/2/qux
+baz/3/qux
+```
+
+## Brace matching pitfalls
+
+Although brace patterns offer a user-friendly way of matching ranges or sets of strings, there are also some major disadvantages and potential risks you should be aware of.
+
+### tldr
+
+**"brace bombs"**
+
+- brace expansion can eat up a huge amount of processing resources
+- as brace patterns increase _linearly in size_, the system resources required to expand the pattern increase exponentially
+- users can accidentally (or intentially) exhaust your system's resources resulting in the equivalent of a DoS attack (bonus: no programming knowledge is required!)
+
+For a more detailed explanation with examples, see the [geometric complexity](#geometric-complexity) section.
+
+### The solution
+
+Jump to the [performance section](#performance) to see how Braces solves this problem in comparison to other libraries.
+
+### Geometric complexity
+
+At minimum, brace patterns with sets limited to two elements have quadradic or `O(n^2)` complexity. But the complexity of the algorithm increases exponentially as the number of sets, _and elements per set_, increases, which is `O(n^c)`.
+
+For example, the following sets demonstrate quadratic (`O(n^2)`) complexity:
+
+```
+{1,2}{3,4}      => (2X2)    => 13 14 23 24
+{1,2}{3,4}{5,6} => (2X2X2)  => 135 136 145 146 235 236 245 246
+```
+
+But add an element to a set, and we get a n-fold Cartesian product with `O(n^c)` complexity:
+
+```
+{1,2,3}{4,5,6}{7,8,9} => (3X3X3) => 147 148 149 157 158 159 167 168 169 247 248
+                                    249 257 258 259 267 268 269 347 348 349 357
+                                    358 359 367 368 369
+```
+
+Now, imagine how this complexity grows given that each element is a n-tuple:
+
+```
+{1..100}{1..100}         => (100X100)     => 10,000 elements (38.4 kB)
+{1..100}{1..100}{1..100} => (100X100X100) => 1,000,000 elements (5.76 MB)
+```
+
+Although these examples are clearly contrived, they demonstrate how brace patterns can quickly grow out of control.
+
+**More information**
+
+Interested in learning more about brace expansion?
+
+- [linuxjournal/bash-brace-expansion](http://www.linuxjournal.com/content/bash-brace-expansion)
+- [rosettacode/Brace_expansion](https://rosettacode.org/wiki/Brace_expansion)
+- [cartesian product](https://en.wikipedia.org/wiki/Cartesian_product)
+
+</details>
+
+## Performance
+
+Braces is not only screaming fast, it's also more accurate the other brace expansion libraries.
+
+### Better algorithms
+
+Fortunately there is a solution to the ["brace bomb" problem](#brace-matching-pitfalls): _don't expand brace patterns into an array when they're used for matching_.
+
+Instead, convert the pattern into an optimized regular expression. This is easier said than done, and braces is the only library that does this currently.
+
+**The proof is in the numbers**
+
+Minimatch gets exponentially slower as patterns increase in complexity, braces does not. The following results were generated using `braces()` and `minimatch.braceExpand()`, respectively.
+
+| **Pattern**                 | **braces**          | **[minimatch][]**            |
+| --------------------------- | ------------------- | ---------------------------- |
+| `{1..9007199254740991}`[^1] | `298 B` (5ms 459μs) | N/A (freezes)                |
+| `{1..1000000000000000}`     | `41 B` (1ms 15μs)   | N/A (freezes)                |
+| `{1..100000000000000}`      | `40 B` (890μs)      | N/A (freezes)                |
+| `{1..10000000000000}`       | `39 B` (2ms 49μs)   | N/A (freezes)                |
+| `{1..1000000000000}`        | `38 B` (608μs)      | N/A (freezes)                |
+| `{1..100000000000}`         | `37 B` (397μs)      | N/A (freezes)                |
+| `{1..10000000000}`          | `35 B` (983μs)      | N/A (freezes)                |
+| `{1..1000000000}`           | `34 B` (798μs)      | N/A (freezes)                |
+| `{1..100000000}`            | `33 B` (733μs)      | N/A (freezes)                |
+| `{1..10000000}`             | `32 B` (5ms 632μs)  | `78.89 MB` (16s 388ms 569μs) |
+| `{1..1000000}`              | `31 B` (1ms 381μs)  | `6.89 MB` (1s 496ms 887μs)   |
+| `{1..100000}`               | `30 B` (950μs)      | `588.89 kB` (146ms 921μs)    |
+| `{1..10000}`                | `29 B` (1ms 114μs)  | `48.89 kB` (14ms 187μs)      |
+| `{1..1000}`                 | `28 B` (760μs)      | `3.89 kB` (1ms 453μs)        |
+| `{1..100}`                  | `22 B` (345μs)      | `291 B` (196μs)              |
+| `{1..10}`                   | `10 B` (533μs)      | `20 B` (37μs)                |
+| `{1..3}`                    | `7 B` (190μs)       | `5 B` (27μs)                 |
+
+### Faster algorithms
+
+When you need expansion, braces is still much faster.
+
+_(the following results were generated using `braces.expand()` and `minimatch.braceExpand()`, respectively)_
+
+| **Pattern**     | **braces**                  | **[minimatch][]**            |
+| --------------- | --------------------------- | ---------------------------- |
+| `{1..10000000}` | `78.89 MB` (2s 698ms 642μs) | `78.89 MB` (18s 601ms 974μs) |
+| `{1..1000000}`  | `6.89 MB` (458ms 576μs)     | `6.89 MB` (1s 491ms 621μs)   |
+| `{1..100000}`   | `588.89 kB` (20ms 728μs)    | `588.89 kB` (156ms 919μs)    |
+| `{1..10000}`    | `48.89 kB` (2ms 202μs)      | `48.89 kB` (13ms 641μs)      |
+| `{1..1000}`     | `3.89 kB` (1ms 796μs)       | `3.89 kB` (1ms 958μs)        |
+| `{1..100}`      | `291 B` (424μs)             | `291 B` (211μs)              |
+| `{1..10}`       | `20 B` (487μs)              | `20 B` (72μs)                |
+| `{1..3}`        | `5 B` (166μs)               | `5 B` (27μs)                 |
+
+If you'd like to run these comparisons yourself, see [test/support/generate.js](test/support/generate.js).
+
+## Benchmarks
+
+### Running benchmarks
+
+Install dev dependencies:
+
+```bash
+npm i -d && npm benchmark
+```
+
+### Latest results
+
+Braces is more accurate, without sacrificing performance.
+
+```bash
+● expand - range (expanded)
+     braces x 53,167 ops/sec ±0.12% (102 runs sampled)
+  minimatch x 11,378 ops/sec ±0.10% (102 runs sampled)
+● expand - range (optimized for regex)
+     braces x 373,442 ops/sec ±0.04% (100 runs sampled)
+  minimatch x 3,262 ops/sec ±0.18% (100 runs sampled)
+● expand - nested ranges (expanded)
+     braces x 33,921 ops/sec ±0.09% (99 runs sampled)
+  minimatch x 10,855 ops/sec ±0.28% (100 runs sampled)
+● expand - nested ranges (optimized for regex)
+     braces x 287,479 ops/sec ±0.52% (98 runs sampled)
+  minimatch x 3,219 ops/sec ±0.28% (101 runs sampled)
+● expand - set (expanded)
+     braces x 238,243 ops/sec ±0.19% (97 runs sampled)
+  minimatch x 538,268 ops/sec ±0.31% (96 runs sampled)
+● expand - set (optimized for regex)
+     braces x 321,844 ops/sec ±0.10% (97 runs sampled)
+  minimatch x 140,600 ops/sec ±0.15% (100 runs sampled)
+● expand - nested sets (expanded)
+     braces x 165,371 ops/sec ±0.42% (96 runs sampled)
+  minimatch x 337,720 ops/sec ±0.28% (100 runs sampled)
+● expand - nested sets (optimized for regex)
+     braces x 242,948 ops/sec ±0.12% (99 runs sampled)
+  minimatch x 87,403 ops/sec ±0.79% (96 runs sampled)
+```
+
+## About
+
+<details>
+<summary><strong>Contributing</strong></summary>
+
+Pull requests and stars are always welcome. For bugs and feature requests, [please create an issue](../../issues/new).
+
+</details>
+
+<details>
+<summary><strong>Running Tests</strong></summary>
+
+Running and reviewing unit tests is a great way to get familiarized with a library and its API. You can install dependencies and run tests with the following command:
+
+```sh
+$ npm install && npm test
+```
+
+</details>
+
+<details>
+<summary><strong>Building docs</strong></summary>
+
+_(This project's readme.md is generated by [verb](https://github.com/verbose/verb-generate-readme), please don't edit the readme directly. Any changes to the readme must be made in the [.verb.md](.verb.md) readme template.)_
+
+To generate the readme, run the following command:
+
+```sh
+$ npm install -g verbose/verb#dev verb-generate-readme && verb
+```
+
+</details>
+
+### Contributors
+
+| **Commits** | **Contributor**                                               |
+| ----------- | ------------------------------------------------------------- |
+| 197         | [jonschlinkert](https://github.com/jonschlinkert)             |
+| 4           | [doowb](https://github.com/doowb)                             |
+| 1           | [es128](https://github.com/es128)                             |
+| 1           | [eush77](https://github.com/eush77)                           |
+| 1           | [hemanth](https://github.com/hemanth)                         |
+| 1           | [wtgtybhertgeghgtwtg](https://github.com/wtgtybhertgeghgtwtg) |
+
+### Author
+
+**Jon Schlinkert**
+
+- [GitHub Profile](https://github.com/jonschlinkert)
+- [Twitter Profile](https://twitter.com/jonschlinkert)
+- [LinkedIn Profile](https://linkedin.com/in/jonschlinkert)
+
+### License
+
+Copyright © 2019, [Jon Schlinkert](https://github.com/jonschlinkert).
+Released under the [MIT License](LICENSE).
+
+---
+
+_This file was generated by [verb-generate-readme](https://github.com/verbose/verb-generate-readme), v0.8.0, on April 08, 2019._
