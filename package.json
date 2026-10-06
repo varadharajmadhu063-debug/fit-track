@@ -1,30 +1,25 @@
 {
-  "name": "is-promise",
-  "version": "4.0.0",
-  "description": "Test whether an object looks like a promises-a+ promise",
-  "main": "./index.js",
+  "name": "server",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
   "scripts": {
-    "test": "node test"
+  "start": "node server.js",
+  "dev": "nodemon server.js"
   },
-  "files": [
-    "index.js",
-    "index.mjs",
-    "index.d.ts"
-  ],
-  "exports": {
-    ".": [
-      {
-        "import": "./index.mjs",
-        "require": "./index.js",
-        "default": "./index.js"
-      },
-      "./index.js"
-    ]
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.4",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^9.10.2"
   },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/then/is-promise.git"
-  },
-  "author": "ForbesLindesay",
-  "license": "MIT"
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
 }
